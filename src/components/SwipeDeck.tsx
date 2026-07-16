@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { StyleReference } from "@/components/StyleReference";
 import { dressPhotos } from "@/lib/dresses";
 import {
   CLIENT_FILTER_GROUPS,
@@ -22,6 +23,7 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
     () => new Set(),
   );
   const [openSectionId, setOpenSectionId] = useState<string | null>(null);
+  const [showStyleReference, setShowStyleReference] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [offsetX, setOffsetX] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -77,6 +79,15 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
 
   function toggleSection(id: string) {
     setOpenSectionId((current) => (current === id ? null : id));
+  }
+
+  function applyStyleReferenceFilter(filterId: string) {
+    setSelectedFilters((previous) => new Set(previous).add(filterId));
+    const group = CLIENT_FILTER_GROUPS.find((candidate) =>
+      candidate.options.some((option) => option.id === filterId),
+    );
+    if (group) setOpenSectionId(group.id);
+    setShowStyleReference(false);
   }
 
   function selectedCountForGroup(groupId: string) {
@@ -162,6 +173,14 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
             {matchingCount} matching · {savedInFilterCount} saved ·{" "}
             {remainingCount} left
           </p>
+
+          <button
+            type="button"
+            onClick={() => setShowStyleReference(true)}
+            className="mb-4 w-full shrink-0 rounded-xl bg-[var(--blush-soft)] px-3 py-2.5 text-sm font-semibold text-[var(--ink)] ring-1 ring-[var(--blush)] transition hover:bg-[var(--blush)]"
+          >
+            Explore dress styles
+          </button>
 
           <label className="mb-3 block shrink-0 space-y-1.5">
             <span className="text-sm font-medium text-[var(--ink)]">
@@ -391,6 +410,15 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
           )}
         </aside>
       </div>
+
+      {showStyleReference ? (
+        <StyleReference
+          dresses={dresses}
+          selectedFilters={selectedFilters}
+          onApplyFilter={applyStyleReferenceFilter}
+          onClose={() => setShowStyleReference(false)}
+        />
+      ) : null}
     </div>
   );
 }
