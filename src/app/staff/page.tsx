@@ -1,5 +1,5 @@
-import { StaffDashboard } from "@/components/StaffDashboard";
+import { redirect } from "next/navigation";
 
 export default function StaffPage() {
-  return <StaffDashboard />;
+  redirect("/staff/appointment-prep");
 }
