@@ -16,7 +16,7 @@ import {
   type Meridiem,
 } from "@/lib/appointments";
 import type { DressPrepSessionSummary } from "@/lib/types";
-import { absoluteUrl, copyText } from "@/lib/urls";
+import { brideSessionUrl, copyText, guestSessionUrl } from "@/lib/urls";
 
 type CopiedKey = string | null;
 type SortKey = "appointment" | "name";
@@ -352,8 +352,8 @@ export function StaffDashboard() {
           </thead>
           <tbody>
             {rows.map((session) => {
-              const brideUrl = absoluteUrl(`/s/${session.client_token}`);
-              const familyUrl = absoluteUrl(`/s/${session.staff_token}`);
+              const brideUrl = brideSessionUrl(session.client_token);
+              const familyUrl = guestSessionUrl(session.staff_token);
               const brideKey = `${session.id}-bride`;
               const familyKey = `${session.id}-family`;
               const editing = editingId === session.id;
@@ -519,6 +519,12 @@ export function StaffDashboard() {
         </div>
         {!showCreate ? (
           <div className="flex items-center gap-3">
+            <a
+              href="/staff/social-media-responses"
+              className="rounded-full bg-white px-4 py-2.5 text-sm font-medium text-[var(--ink)] ring-1 ring-black/10 transition hover:bg-black/[0.03]"
+            >
+              Social media
+            </a>
             <button
               type="button"
               onClick={() => setShowCreate(true)}

@@ -5,7 +5,7 @@ import { FavoritesGrid } from "@/components/FavoritesGrid";
 import { SwipeDeck } from "@/components/SwipeDeck";
 import { formatAppointmentFull } from "@/lib/appointments";
 import type { DressCard, DressPrepFavorite, DressPrepSession } from "@/lib/types";
-import { absoluteUrl, copyText } from "@/lib/urls";
+import { copyText, guestSessionUrl } from "@/lib/urls";
 
 type Props = {
   token: string;
@@ -103,7 +103,7 @@ export function SessionPage({ token }: Props) {
 
   async function copyViewOnlyLink() {
     if (!session?.staff_token) return;
-    await copyText(absoluteUrl(`/s/${session.staff_token}`));
+    await copyText(guestSessionUrl(session.staff_token));
     setCopiedShare(true);
     window.setTimeout(() => setCopiedShare(false), 2000);
   }

@@ -14,7 +14,7 @@ export function SiteHeader() {
           {/* Half of native 500×213 → 250 wide; shared on all three pages */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/bridal-closet-logo.png"
+            src="https://www.mybridalcloset.com/cdn/shop/files/BridalClosetLogoTransparent.png?v=1672175112&width=500"
             alt="Bridal Closet"
             width={250}
             height={107}

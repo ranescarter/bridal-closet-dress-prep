@@ -4,9 +4,13 @@ import { useState } from "react";
 
 type Props = {
   onSuccess: () => void;
+  title?: string;
 };
 
-export function StaffLoginForm({ onSuccess }: Props) {
+export function StaffLoginForm({
+  onSuccess,
+  title = "Appointment prep dashboard",
+}: Props) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +40,7 @@ export function StaffLoginForm({ onSuccess }: Props) {
     <div className="mx-auto w-full max-w-md space-y-6">
       <div className="space-y-1 text-center">
         <h1 className="font-[family-name:var(--font-display)] text-4xl font-normal text-[var(--ink)]">
-          Appointment prep dashboard
+          {title}
         </h1>
         <p className="text-[var(--muted)]">Staff sign-in required</p>
       </div>
