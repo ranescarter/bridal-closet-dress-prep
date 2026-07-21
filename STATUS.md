@@ -34,4 +34,4 @@ First dress on a new bride link follows Shopify collection order (Manual sort on
 
 ## Deploy
 
-- [ ] Push recent local work to GitHub / production (planned via separate agent transcript `2d155f10-6e24-4a1d-b139-14c4c4c25393`)
+- [x] Pushed to GitHub / production (`main`)
