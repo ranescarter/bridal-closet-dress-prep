@@ -16,42 +16,33 @@ Open [http://localhost:3000](http://localhost:3000) → redirects to `/staff`.
 | --- | --- |
 | `/staff` | Create session (name, appointment) → copy client + staff links |
 | `/s/[client_token]` | Client: swipe + edit favorites |
-| `/s/[staff_token]` | Staff: read-only session + favorites |
+| `/s/[staff_token]` | Family: read-only session + favorites |
 
-## MVP
+## Env
 
-- Shopify Admin API (Client ID/Secret → short-lived token)
-- Collection handle: `gowns-in-store` (CDN image URLs only)
-- Supabase: `dress_prep_sessions`, `dress_prep_favorites`
-- Live favorites (no Done button)
-- No n8n for MVP
+Copy `.env.example` → `.env.local`. Set secrets in Vercel for production — never commit `.env*`.
 
-## Env (`.env.local`)
+| Variable | Notes |
+| --- | --- |
+| `SHOPIFY_STORE_DOMAIN` | e.g. `store.myshopify.com` |
+| `SHOPIFY_CLIENT_ID` / `SHOPIFY_CLIENT_SECRET` | Dev Dashboard app credentials |
+| `SHOPIFY_COLLECTION_HANDLE` | Default `gowns-in-store` |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only; never `NEXT_PUBLIC_` |
+| `STAFF_PASSWORD` | Protects `/staff` and staff APIs |
+| `NEXT_PUBLIC_ADMIN_ORIGIN` | Staff host (default `admin.mybridalcloset.com`) |
+| `NEXT_PUBLIC_BRIDE_ORIGIN` | Bride session host |
+| `NEXT_PUBLIC_GUEST_ORIGIN` | Family session host |
+| `SOCIAL_MEDIA_ORIGIN` | Optional rewrite target for social dashboard |
 
-```
-SHOPIFY_STORE_DOMAIN=mybridalcloset-dev.myshopify.com
-SHOPIFY_CLIENT_ID=...
-SHOPIFY_CLIENT_SECRET=...
-SHOPIFY_COLLECTION_HANDLE=gowns-in-store
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-SUPABASE_SERVICE_ROLE_KEY=...
-STAFF_PASSWORD=...
-```
+On localhost, bride/guest copy links use the current origin so local testing works.
 
 ## Security
 
-- **Browser** never talks to Supabase directly — only through `/api/*` routes.
-- **`SUPABASE_SERVICE_ROLE_KEY`** is server-only (never `NEXT_PUBLIC_`). API routes use it after checking tokens.
-- **Dress prep tables** block direct anon/authenticated access via RLS. Bride/family links are token-scoped in the API.
-- **Family links** never receive the bride `client_token` in API responses.
-- **`STAFF_PASSWORD`** protects `/staff` and `/api/sessions` (create, list, edit, delete).
+- Browser never talks to Supabase directly — only through `/api/*`.
+- Dress prep tables block direct anon access via RLS; APIs are token-scoped.
+- Family links never receive the bride `client_token` in API responses.
 
-## Later
+## Deploy
 
-- Bridal Live SMS template
-
-## Smoke test (2026-07-15)
-
-- Shopify returned 232 active Gowns In Store products
-- Create session → save favorite → staff token sees favorite
+Vercel project for this app. Custom hosts (`admin` / `bride` / `guest`) point here. Social Media UI is a separate Vercel project, rewritten under `/staff/social-media-responses` via `SOCIAL_MEDIA_ORIGIN`.

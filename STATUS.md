@@ -8,6 +8,9 @@
 - [x] Staff dashboard (`/staff`) — create, list, edit, copy/open links, remove
 - [x] Session hub with name / appointment / favorites
 - [x] Client swipe UI
+  - Photo-forward layout; description opens from an info icon beside the title
+  - View on website kept inside the description drawer
+  - Favorites use a full-width grid; description via info + drawer (no side panel)
 - [x] Visual dress-style reference using live Shopify images
   - Browse silhouettes, necklines/straps, sleeves/coverage, and details
   - Filter dresses directly from a reference style

@@ -123,7 +123,7 @@ export function SessionPage({ token }: Props) {
   const canEdit = role === "client";
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       <div className="flex flex-col gap-3 border-b border-[var(--blush)] pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="space-y-1">
           <h1 className="font-[family-name:var(--font-display)] text-2xl font-normal text-[var(--ink)] sm:text-3xl">
@@ -173,7 +173,7 @@ export function SessionPage({ token }: Props) {
 
       <section
         className={`space-y-4 ${
-          canEdit ? "border-t border-[var(--blush)] pt-8" : ""
+          canEdit ? "border-t border-[var(--blush)] pt-6" : ""
         }`}
       >
         <div className="flex items-end justify-between gap-3">

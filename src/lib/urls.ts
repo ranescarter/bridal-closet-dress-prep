@@ -10,6 +10,21 @@ function withFallback(value: string | undefined, fallback: string) {
   return trimTrailingSlash(value?.trim() || fallback);
 }
 
+function isLocalBrowserHost() {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1";
+}
+
+/**
+ * Session links use dedicated bride/guest hosts in production.
+ * On localhost they stay on the current origin so Copy/Open match the local app.
+ */
+function linkOrigin(configuredOrigin: string) {
+  if (isLocalBrowserHost()) return window.location.origin;
+  return configuredOrigin;
+}
+
 /** Staff dashboard / tools host */
 export function adminOrigin() {
   return withFallback(process.env.NEXT_PUBLIC_ADMIN_ORIGIN, DEFAULT_ADMIN_HOST);
@@ -33,11 +48,11 @@ export function absoluteUrl(path: string) {
 }
 
 export function brideSessionUrl(clientToken: string) {
-  return `${brideOrigin()}/s/${clientToken}`;
+  return `${linkOrigin(brideOrigin())}/s/${clientToken}`;
 }
 
 export function guestSessionUrl(staffToken: string) {
-  return `${guestOrigin()}/s/${staffToken}`;
+  return `${linkOrigin(guestOrigin())}/s/${staffToken}`;
 }
 
 export async function copyText(text: string) {

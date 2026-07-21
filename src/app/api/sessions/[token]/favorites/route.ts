@@ -5,23 +5,25 @@ import {
   touchSession,
 } from "@/lib/session-auth";
 import { createSupabaseAdmin } from "@/lib/supabase";
+import { badRequest, readJsonBody, serverError } from "@/lib/http";
 
 type Params = { params: Promise<{ token: string }> };
 
 export async function POST(request: Request, { params }: Params) {
   try {
     const { token } = await params;
-    const body = (await request.json()) as {
+    const body = await readJsonBody<{
       shopifyProductId?: string;
       title?: string;
       handle?: string;
       imageUrl?: string | null;
       productUrl?: string | null;
       descriptionHtml?: string | null;
-    };
+    }>(request);
+    if (!body) return badRequest("Invalid request body");
 
     if (!body.shopifyProductId || !body.title) {
-      return NextResponse.json({ error: "Missing product fields" }, { status: 400 });
+      return badRequest("Missing product fields");
     }
 
     const session = await requireClientSession(token);
@@ -45,7 +47,7 @@ export async function POST(request: Request, { params }: Params) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return serverError("Could not save favorite");
     }
 
     await touchSession(session.id);
@@ -55,9 +57,7 @@ export async function POST(request: Request, { params }: Params) {
     if (error instanceof SessionAccessError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    const message =
-      error instanceof Error ? error.message : "Save favorite failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError("Could not save favorite");
   }
 }
 
@@ -68,7 +68,7 @@ export async function DELETE(request: Request, { params }: Params) {
     const shopifyProductId = searchParams.get("shopifyProductId");
 
     if (!shopifyProductId) {
-      return NextResponse.json({ error: "shopifyProductId required" }, { status: 400 });
+      return badRequest("shopifyProductId required");
     }
 
     const session = await requireClientSession(token);
@@ -81,7 +81,7 @@ export async function DELETE(request: Request, { params }: Params) {
       .eq("shopify_product_id", shopifyProductId);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return serverError("Could not remove favorite");
     }
 
     await touchSession(session.id);
@@ -91,8 +91,6 @@ export async function DELETE(request: Request, { params }: Params) {
     if (error instanceof SessionAccessError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    const message =
-      error instanceof Error ? error.message : "Remove favorite failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError("Could not remove favorite");
   }
 }

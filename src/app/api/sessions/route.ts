@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase";
 import { requireStaffAuth } from "@/lib/staff-auth";
+import { badRequest, readJsonBody, serverError } from "@/lib/http";
 
 export async function GET() {
   try {
@@ -10,25 +11,33 @@ export async function GET() {
     const supabase = createSupabaseAdmin();
     const { data, error } = await supabase
       .from("dress_prep_sessions")
-      .select("*, dress_prep_favorites(created_at)")
+      .select("*, dress_prep_favorites(id, title, created_at)")
       .order("appointment_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return serverError("Could not list sessions");
     }
 
     const sessions = (data || []).map((row) => {
       const favoriteRows = row.dress_prep_favorites as
-        | { created_at: string }[]
+        | { id: string; title: string; created_at: string }[]
         | null
         | undefined;
-      const favoriteCount = favoriteRows?.length ?? 0;
+      const favorites = (favoriteRows || [])
+        .slice()
+        .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
+        .map((favorite) => ({
+          id: favorite.id,
+          title: favorite.title,
+        }));
+      const favoriteCount = favorites.length;
       const maxFavoriteAt = favoriteRows?.reduce((max, favorite) => {
         const time = new Date(favorite.created_at).getTime();
         return Number.isFinite(time) && time > max ? time : max;
       }, 0);
-      const { dress_prep_favorites: _favorites, ...session } = row;
+      const { dress_prep_favorites: favoritesRelation, ...session } = row;
+      void favoritesRelation;
       const sessionUpdated = new Date(
         session.updated_at ?? session.created_at,
       ).getTime();
@@ -38,14 +47,13 @@ export async function GET() {
         ...session,
         favorite_count: favoriteCount,
         last_updated_at: new Date(lastUpdatedMs).toISOString(),
+        favorites,
       };
     });
 
     return NextResponse.json({ sessions });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "List sessions failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return serverError("Could not list sessions");
   }
 }
 
@@ -54,14 +62,15 @@ export async function POST(request: Request) {
     const unauthorized = await requireStaffAuth();
     if (unauthorized) return unauthorized;
 
-    const body = (await request.json()) as {
+    const body = await readJsonBody<{
       clientName?: string;
       appointmentAt?: string | null;
-    };
+    }>(request);
+    if (!body) return badRequest("Invalid request body");
 
     const clientName = (body.clientName || "").trim();
     if (!clientName) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+      return badRequest("Name is required");
     }
 
     const supabase = createSupabaseAdmin();
@@ -75,14 +84,12 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return serverError("Could not create session");
     }
 
     return NextResponse.json({ session: data });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Create session failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return serverError("Could not create session");
   }
 }
 
@@ -91,14 +98,15 @@ export async function PATCH(request: Request) {
     const unauthorized = await requireStaffAuth();
     if (unauthorized) return unauthorized;
 
-    const body = (await request.json()) as {
+    const body = await readJsonBody<{
       id?: string;
       appointmentAt?: string | null;
-    };
+    }>(request);
+    if (!body) return badRequest("Invalid request body");
 
     const id = (body.id || "").trim();
     if (!id) {
-      return NextResponse.json({ error: "Session id is required" }, { status: 400 });
+      return badRequest("Session id is required");
     }
 
     const supabase = createSupabaseAdmin();
@@ -113,14 +121,12 @@ export async function PATCH(request: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return serverError("Could not update session");
     }
 
     return NextResponse.json({ session: data });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Update session failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return serverError("Could not update session");
   }
 }
 
@@ -129,10 +135,12 @@ export async function DELETE(request: Request) {
     const unauthorized = await requireStaffAuth();
     if (unauthorized) return unauthorized;
 
-    const body = (await request.json()) as { id?: string };
+    const body = await readJsonBody<{ id?: string }>(request);
+    if (!body) return badRequest("Invalid request body");
+
     const id = (body.id || "").trim();
     if (!id) {
-      return NextResponse.json({ error: "Session id is required" }, { status: 400 });
+      return badRequest("Session id is required");
     }
 
     const supabase = createSupabaseAdmin();
@@ -142,13 +150,11 @@ export async function DELETE(request: Request) {
       .eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return serverError("Could not delete session");
     }
 
     return NextResponse.json({ ok: true });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Delete session failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return serverError("Could not delete session");
   }
 }

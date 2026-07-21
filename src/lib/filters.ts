@@ -1,18 +1,52 @@
 /**
  * Curated client filters from Gowns In Store tag research.
- * Each option matches one or more real Shopify tags (case-insensitive).
+ * Each option matches one or more real Shopify tags (case-insensitive),
+ * or a server-banded priceRangeId (never a raw dollar amount in the UI).
+ *
+ * Naming: in code these are "filter groups"; staff often call them "categories."
  */
+import type { PriceRangeId } from "@/lib/price-range";
+
 export type FilterOption = {
   id: string;
   label: string;
   /** Tag substrings / exact names that count as a match */
-  matchTags: string[];
+  matchTags?: string[];
+  /** Matches DressCard.priceRangeId for Price Range filters */
+  priceRangeId?: PriceRangeId;
 };
 
 export type FilterGroup = {
   id: string;
   label: string;
   options: FilterOption[];
+};
+
+const PRICE_RANGE_GROUP: FilterGroup = {
+  id: "price-range",
+  label: "Price Range",
+  options: [
+    {
+      id: "price-1000-1499",
+      label: "$1,000 – $1,499",
+      priceRangeId: "1000-1499",
+    },
+    {
+      id: "price-1500-1999",
+      label: "$1,500 – $1,999",
+      priceRangeId: "1500-1999",
+    },
+    {
+      id: "price-2000-2499",
+      label: "$2,000 – $2,499",
+      priceRangeId: "2000-2499",
+    },
+    {
+      id: "price-2500-plus",
+      label: "$2,500+",
+      priceRangeId: "2500-plus",
+    },
+  ],
 };
 
 export const CLIENT_FILTER_GROUPS: FilterGroup[] = sortFilterGroups([
@@ -86,9 +120,34 @@ export const CLIENT_FILTER_GROUPS: FilterGroup[] = sortFilterGroups([
     label: "Designer",
     options: [
       {
+        id: "ariamo",
+        label: "Ariamo",
+        matchTags: ["ariamo"],
+      },
+      {
+        id: "bridal-closet",
+        label: "Bridal Closet",
+        matchTags: ["bridal closet"],
+      },
+      {
+        id: "la-premiere",
+        label: "La Premiere",
+        matchTags: ["la premiere"],
+      },
+      {
         id: "maggie-sottero",
         label: "Maggie Sottero",
         matchTags: ["maggie sottero"],
+      },
+      {
+        id: "mon-cheri",
+        label: "Mon Cheri Modest",
+        matchTags: ["mon cheri modest", "mon cheri"],
+      },
+      {
+        id: "pollardi",
+        label: "Pollardi",
+        matchTags: ["pollardi"],
       },
       {
         id: "rebecca-ingram",
@@ -97,60 +156,91 @@ export const CLIENT_FILTER_GROUPS: FilterGroup[] = sortFilterGroups([
       },
       {
         id: "sottero-midgley",
-        label: "Sottero & Midgley",
+        label: "Sottero and Midgley",
         matchTags: ["sottero and midgley", "sottero & midgley"],
       },
       {
-        id: "mon-cheri",
-        label: "Mon Cheri",
-        matchTags: ["mon cheri"],
+        id: "stone-collection",
+        label: "Stone Collection",
+        matchTags: ["stone collection"],
       },
       {
-        id: "bridal-closet",
-        label: "Bridal Closet",
-        matchTags: ["bridal closet"],
+        id: "studio-levana",
+        label: "Studio Levana",
+        matchTags: ["studio levana"],
       },
       {
-        id: "ariamo",
-        label: "Ariamo",
-        matchTags: ["ariamo"],
+        id: "zuri",
+        label: "Zuri",
+        matchTags: ["zuri"],
       },
     ],
   },
+  PRICE_RANGE_GROUP,
 ]);
 
 function sortFilterGroups(groups: FilterGroup[]): FilterGroup[] {
   return [...groups]
-    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
-    .map((group) => ({
-      ...group,
-      options: [...group.options].sort((a, b) =>
-        a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
-      ),
-    }));
+    .sort((a, b) =>
+      a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+    )
+    .map((group) => {
+      // Keep Price Range in ascending band order (not A–Z by label).
+      if (group.id === "price-range") return group;
+      return {
+        ...group,
+        options: [...group.options].sort((a, b) =>
+          a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+        ),
+      };
+    });
 }
 
 function normalizeTag(tag: string) {
   return tag.trim().toLowerCase().replace(/^[-–—]+\s*/, "");
 }
 
+function optionMatchesDress(
+  option: FilterOption,
+  normalizedTags: string[],
+  priceRangeId: string | null | undefined,
+  vendor: string | null | undefined,
+): boolean {
+  if (option.priceRangeId) {
+    return priceRangeId === option.priceRangeId;
+  }
+  const matchTags = option.matchTags || [];
+  const normalizedVendor = vendor ? normalizeTag(vendor) : "";
+  return matchTags.some((needle) => {
+    const n = needle.toLowerCase();
+    if (normalizedVendor && (normalizedVendor === n || normalizedVendor.includes(n))) {
+      return true;
+    }
+    return normalizedTags.some((tag) => tag === n || tag.includes(n));
+  });
+}
+
+/**
+ * Selected filters: OR within the same group, AND across groups.
+ */
 export function dressMatchesFilters(
   tags: string[],
   selectedIds: Set<string>,
+  priceRangeId?: string | null,
+  vendor?: string | null,
 ): boolean {
   if (selectedIds.size === 0) return true;
 
   const normalized = tags.map(normalizeTag);
-  const allOptions = CLIENT_FILTER_GROUPS.flatMap((g) => g.options);
 
-  for (const id of selectedIds) {
-    const option = allOptions.find((o) => o.id === id);
-    if (!option) continue;
-    const ok = option.matchTags.some((needle) => {
-      const n = needle.toLowerCase();
-      return normalized.some((tag) => tag === n || tag.includes(n));
-    });
-    if (!ok) return false;
+  for (const group of CLIENT_FILTER_GROUPS) {
+    const selectedInGroup = group.options.filter((o) => selectedIds.has(o.id));
+    if (selectedInGroup.length === 0) continue;
+
+    const matchesGroup = selectedInGroup.some((option) =>
+      optionMatchesDress(option, normalized, priceRangeId, vendor),
+    );
+    if (!matchesGroup) return false;
   }
 
   return true;

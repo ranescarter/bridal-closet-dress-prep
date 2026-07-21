@@ -1,4 +1,5 @@
 import type { DressCard } from "./types";
+import { priceAmountToRangeId } from "./price-range";
 
 type TokenCache = {
   accessToken: string;
@@ -110,6 +111,7 @@ type CollectionProductsResponse = {
           title: string;
           handle: string;
           status: string;
+          vendor: string;
           tags: string[];
           descriptionHtml: string | null;
           featuredImage: { url: string } | null;
@@ -120,6 +122,9 @@ type CollectionProductsResponse = {
             } | null>;
           };
           onlineStoreUrl: string | null;
+          priceRangeV2: {
+            minVariantPrice: { amount: string; currencyCode: string };
+          };
         };
       }>;
       pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -147,6 +152,7 @@ export async function fetchGownsInStore(): Promise<DressCard[]> {
                 title
                 handle
                 status
+                vendor
                 tags
                 descriptionHtml
                 featuredImage { url }
@@ -159,6 +165,12 @@ export async function fetchGownsInStore(): Promise<DressCard[]> {
                   }
                 }
                 onlineStoreUrl
+                priceRangeV2 {
+                  minVariantPrice {
+                    amount
+                    currencyCode
+                  }
+                }
               }
             }
             pageInfo {
@@ -199,6 +211,9 @@ export async function fetchGownsInStore(): Promise<DressCard[]> {
         imageUrls.push(p.featuredImage.url);
       }
 
+      const amountRaw = p.priceRangeV2?.minVariantPrice?.amount;
+      const amount = amountRaw != null ? Number.parseFloat(amountRaw) : NaN;
+
       dresses.push({
         shopifyProductId: p.id,
         title: p.title,
@@ -207,17 +222,17 @@ export async function fetchGownsInStore(): Promise<DressCard[]> {
         imageUrls,
         productUrl: p.onlineStoreUrl,
         tags: Array.isArray(p.tags) ? p.tags : [],
+        vendor: (p.vendor || "").trim() || null,
         descriptionHtml: p.descriptionHtml || null,
+        priceRangeId: priceAmountToRangeId(
+          Number.isFinite(amount) ? amount : null,
+        ),
       });
     }
 
     hasNextPage = data.collectionByHandle.products.pageInfo.hasNextPage;
     cursor = data.collectionByHandle.products.pageInfo.endCursor;
   }
-
-  dresses.sort((a, b) =>
-    a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
-  );
 
   return dresses;
 }

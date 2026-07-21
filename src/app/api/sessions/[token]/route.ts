@@ -4,6 +4,7 @@ import {
   sanitizeSessionForRole,
 } from "@/lib/session-auth";
 import { createSupabaseAdmin } from "@/lib/supabase";
+import { serverError } from "@/lib/http";
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -24,7 +25,7 @@ export async function GET(_request: Request, { params }: Params) {
       .order("created_at", { ascending: true });
 
     if (favError) {
-      return NextResponse.json({ error: favError.message }, { status: 500 });
+      return serverError("Could not load session");
     }
 
     return NextResponse.json({
@@ -32,9 +33,7 @@ export async function GET(_request: Request, { params }: Params) {
       favorites: favorites || [],
       role: resolved.role,
     });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Load session failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return serverError("Could not load session");
   }
 }

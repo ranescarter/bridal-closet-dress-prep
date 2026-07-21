@@ -49,7 +49,12 @@ export function StyleReference({
         const matches = dresses.filter(
           (dress) =>
             imageFor(dress) &&
-            dressMatchesFilters(dress.tags ?? [], new Set([item.filterId])),
+            dressMatchesFilters(
+              dress.tags ?? [],
+              new Set([item.filterId]),
+              dress.priceRangeId,
+              dress.vendor,
+            ),
         );
         if (matches.length) examples.set(item.filterId, matches);
       }
