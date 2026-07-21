@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { DressDetailsDrawer } from "@/components/DressDetailsDrawer";
-import { dressPhotos } from "@/lib/dresses";
+import { FavoritePhotoLightbox } from "@/components/FavoritePhotoLightbox";
+import { MorePhotosControl } from "@/components/MorePhotosControl";
+import { dressPhotos, shopifyCdnUrl } from "@/lib/dresses";
 import type { DressCard, DressPrepFavorite } from "@/lib/types";
 
 type Props = {
@@ -22,6 +24,9 @@ export function FavoritesGrid({
     {},
   );
   const [detailsFavoriteId, setDetailsFavoriteId] = useState<string | null>(
+    null,
+  );
+  const [lightboxFavoriteId, setLightboxFavoriteId] = useState<string | null>(
     null,
   );
 
@@ -48,11 +53,27 @@ export function FavoritesGrid({
     return dress?.descriptionHtml ?? null;
   }
 
-  function cyclePhoto(favId: string, photoCount: number) {
+  function setPhotoIndex(favId: string, index: number) {
     setPhotoIndexById((prev) => ({
       ...prev,
-      [favId]: ((prev[favId] ?? 0) + 1) % photoCount,
+      [favId]: index,
     }));
+  }
+
+  function cyclePhoto(favId: string, photoCount: number, delta: number) {
+    setPhotoIndexById((prev) => ({
+      ...prev,
+      [favId]: ((prev[favId] ?? 0) + delta + photoCount) % photoCount,
+    }));
+  }
+
+  function goToNeighborDress(delta: number) {
+    if (!lightboxFavoriteId) return;
+    const currentIndex = favorites.findIndex((f) => f.id === lightboxFavoriteId);
+    if (currentIndex < 0) return;
+    const nextIndex =
+      (currentIndex + delta + favorites.length) % favorites.length;
+    setLightboxFavoriteId(favorites[nextIndex].id);
   }
 
   async function handleRemove(shopifyProductId: string) {
@@ -63,12 +84,25 @@ export function FavoritesGrid({
         setDetailsFavoriteId(null);
       }
     }
+    if (lightboxFavoriteId) {
+      const open = favorites.find((f) => f.id === lightboxFavoriteId);
+      if (open?.shopify_product_id === shopifyProductId) {
+        setLightboxFavoriteId(null);
+      }
+    }
     await onRemove(shopifyProductId);
   }
 
   const detailsFavorite = detailsFavoriteId
-    ? favorites.find((f) => f.id === detailsFavoriteId) ?? null
+    ? (favorites.find((f) => f.id === detailsFavoriteId) ?? null)
     : null;
+
+  const lightboxFavorite = lightboxFavoriteId
+    ? (favorites.find((f) => f.id === lightboxFavoriteId) ?? null)
+    : null;
+
+  const lightboxPhotos = lightboxFavorite ? photosFor(lightboxFavorite) : [];
+  const canNavDresses = favorites.length > 1;
 
   return (
     <>
@@ -87,50 +121,68 @@ export function FavoritesGrid({
                   style={{ aspectRatio: "3 / 4" }}
                 >
                   {activePhoto ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={activePhoto}
-                      alt={fav.title}
-                      className="absolute inset-0 h-full w-full object-cover object-top"
-                    />
-                  ) : null}
-
-                  <div className="absolute bottom-2 left-2 right-2 z-10 flex items-end justify-between gap-2">
                     <button
                       type="button"
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--blush-soft)] p-0 text-[var(--ink)] ring-1 ring-[var(--blush)] backdrop-blur-sm"
-                      onClick={() => setDetailsFavoriteId(fav.id)}
+                      className="absolute inset-0 block h-full w-full cursor-zoom-in"
+                      onClick={() => setLightboxFavoriteId(fav.id)}
+                      aria-label={`View larger photo of ${fav.title}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={
+                          shopifyCdnUrl(activePhoto, 480) || activePhoto
+                        }
+                        alt=""
+                        className="h-full w-full object-cover object-top"
+                        draggable={false}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    </button>
+                  ) : null}
+
+                  {/* Overlay controls sit above the image button; enlarged hit areas */}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-1 p-1">
+                    <button
+                      type="button"
+                      className="pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--ink)]"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setDetailsFavoriteId(fav.id);
+                      }}
                       aria-label={`View description for ${fav.title}`}
                       title="View description"
                     >
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-5 w-5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        aria-hidden
-                      >
-                        <circle cx="12" cy="12" r="9" />
-                        <path d="M12 11v6" strokeLinecap="round" />
-                        <circle
-                          cx="12"
-                          cy="8"
-                          r="1"
-                          fill="currentColor"
-                          stroke="none"
-                        />
-                      </svg>
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--blush-soft)] ring-1 ring-[var(--blush)] backdrop-blur-sm">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-5 w-5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          aria-hidden
+                        >
+                          <circle cx="12" cy="12" r="9" />
+                          <path d="M12 11v6" strokeLinecap="round" />
+                          <circle
+                            cx="12"
+                            cy="8"
+                            r="1"
+                            fill="currentColor"
+                            stroke="none"
+                          />
+                        </svg>
+                      </span>
                     </button>
 
                     {hasMorePhotos ? (
-                      <button
-                        type="button"
-                        className="rounded-full bg-black/55 px-2 py-1 text-[10px] font-medium text-white backdrop-blur-sm sm:text-xs"
-                        onClick={() => cyclePhoto(fav.id, photos.length)}
-                      >
-                        More photos · {photoIndex + 1}/{photos.length}
-                      </button>
+                      <MorePhotosControl
+                        variant="overlay"
+                        index={photoIndex}
+                        count={photos.length}
+                        onPrev={() => cyclePhoto(fav.id, photos.length, -1)}
+                        onNext={() => cyclePhoto(fav.id, photos.length, 1)}
+                      />
                     ) : (
                       <span />
                     )}
@@ -161,8 +213,23 @@ export function FavoritesGrid({
         <DressDetailsDrawer
           title={detailsFavorite.title}
           descriptionHtml={descriptionHtmlFor(detailsFavorite)}
+          shopifyProductId={detailsFavorite.shopify_product_id}
           productUrl={detailsFavorite.product_url}
           onClose={() => setDetailsFavoriteId(null)}
+        />
+      ) : null}
+
+      {lightboxFavorite && lightboxPhotos.length > 0 ? (
+        <FavoritePhotoLightbox
+          title={lightboxFavorite.title}
+          photos={lightboxPhotos}
+          initialIndex={photoIndexById[lightboxFavorite.id] ?? 0}
+          onClose={() => setLightboxFavoriteId(null)}
+          onIndexChange={(index) => setPhotoIndex(lightboxFavorite.id, index)}
+          canPrevDress={canNavDresses}
+          canNextDress={canNavDresses}
+          onPrevDress={() => goToNeighborDress(-1)}
+          onNextDress={() => goToNeighborDress(1)}
         />
       ) : null}
     </>

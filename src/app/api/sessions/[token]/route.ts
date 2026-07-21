@@ -21,16 +21,21 @@ export async function GET(_request: Request, { params }: Params) {
     const { data: favorites, error: favError } = await supabase
       .from("dress_prep_favorites")
       .select("*")
-      .eq("session_id", resolved.session.id)
-      .order("created_at", { ascending: true });
+      .eq("session_id", resolved.session.id);
 
     if (favError) {
       return serverError("Could not load session");
     }
 
+    const sortedFavorites = [...(favorites || [])].sort((a, b) =>
+      String(a.title || "").localeCompare(String(b.title || ""), undefined, {
+        sensitivity: "base",
+      }),
+    );
+
     return NextResponse.json({
       session: sanitizeSessionForRole(resolved.session, resolved.role),
-      favorites: favorites || [],
+      favorites: sortedFavorites,
       role: resolved.role,
     });
   } catch {

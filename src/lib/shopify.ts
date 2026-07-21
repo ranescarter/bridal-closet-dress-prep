@@ -1,12 +1,29 @@
 import type { DressCard } from "./types";
 import { priceAmountToRangeId } from "./price-range";
+import { shopifyCdnUrl } from "./dresses";
+
+/** How many gallery images to keep per dress in the client catalog. */
+const MAX_GALLERY_IMAGES = 6;
+/** Server memory cache for the Active Gowns In Store catalog. */
+const CATALOG_TTL_MS = 3 * 60 * 1000;
 
 type TokenCache = {
   accessToken: string;
   expiresAt: number;
 };
 
+type CatalogCache = {
+  dresses: DressCard[];
+  expiresAt: number;
+  promise: Promise<DressCard[]> | null;
+};
+
 let tokenCache: TokenCache | null = null;
+let catalogCache: CatalogCache = {
+  dresses: [],
+  expiresAt: 0,
+  promise: null,
+};
 
 function getShopifyConfig() {
   const domain = process.env.SHOPIFY_STORE_DOMAIN;
@@ -156,7 +173,7 @@ export async function fetchGownsInStore(): Promise<DressCard[]> {
                 tags
                 descriptionHtml
                 featuredImage { url }
-                media(first: 12) {
+                media(first: 6) {
                   nodes {
                     ... on MediaImage {
                       createdAt
@@ -206,10 +223,14 @@ export async function fetchGownsInStore(): Promise<DressCard[]> {
         }))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-      const imageUrls = mediaPhotos.map((photo) => photo.url);
-      if (imageUrls.length === 0 && p.featuredImage?.url) {
-        imageUrls.push(p.featuredImage.url);
+      const rawUrls = mediaPhotos.map((photo) => photo.url);
+      if (rawUrls.length === 0 && p.featuredImage?.url) {
+        rawUrls.push(p.featuredImage.url);
       }
+
+      const imageUrls = rawUrls
+        .slice(0, MAX_GALLERY_IMAGES)
+        .map((url) => shopifyCdnUrl(url, 1200) || url);
 
       const amountRaw = p.priceRangeV2?.minVariantPrice?.amount;
       const amount = amountRaw != null ? Number.parseFloat(amountRaw) : NaN;
@@ -235,4 +256,44 @@ export async function fetchGownsInStore(): Promise<DressCard[]> {
   }
 
   return dresses;
+}
+
+/**
+ * Cached Active Gowns In Store catalog (shared across requests on the same
+ * server instance). Concurrent callers share one in-flight Shopify fetch.
+ */
+export async function getCachedGownsInStore(): Promise<DressCard[]> {
+  const now = Date.now();
+  if (catalogCache.dresses.length > 0 && catalogCache.expiresAt > now) {
+    return catalogCache.dresses;
+  }
+
+  if (catalogCache.promise) {
+    return catalogCache.promise;
+  }
+
+  catalogCache.promise = fetchGownsInStore()
+    .then((dresses) => {
+      catalogCache = {
+        dresses,
+        expiresAt: Date.now() + CATALOG_TTL_MS,
+        promise: null,
+      };
+      return dresses;
+    })
+    .catch((error) => {
+      catalogCache.promise = null;
+      throw error;
+    });
+
+  return catalogCache.promise;
+}
+
+export function filterDressesByIds(
+  dresses: DressCard[],
+  ids: string[],
+): DressCard[] {
+  if (!ids.length) return [];
+  const wanted = new Set(ids);
+  return dresses.filter((dress) => wanted.has(dress.shopifyProductId));
 }

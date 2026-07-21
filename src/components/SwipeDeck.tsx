@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DressDetailsDrawer } from "@/components/DressDetailsDrawer";
+import { MorePhotosControl } from "@/components/MorePhotosControl";
 import { StyleReference } from "@/components/StyleReference";
 import { dressPhotos } from "@/lib/dresses";
 import {
@@ -14,10 +15,16 @@ import type { DressCard } from "@/lib/types";
 type Props = {
   dresses: DressCard[];
   favoritedIds: Set<string>;
+  atSaveLimit?: boolean;
   onSave: (dress: DressCard) => Promise<void>;
 };
 
-export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
+export function SwipeDeck({
+  dresses,
+  favoritedIds,
+  atSaveLimit = false,
+  onSave,
+}: Props) {
   const [skippedIds, setSkippedIds] = useState<Set<string>>(() => new Set());
   const [selectedFilters, setSelectedFilters] = useState<Set<string>>(
     () => new Set(),
@@ -28,6 +35,11 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [offsetX, setOffsetX] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [limitMessage, setLimitMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!atSaveLimit) setLimitMessage(null);
+  }, [atSaveLimit]);
   const [busy, setBusy] = useState(false);
   const [imageIndex, setImageIndex] = useState(0);
   const startX = useRef(0);
@@ -104,11 +116,24 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
 
   async function decide(direction: "left" | "right") {
     if (!current || busy) return;
+
+    if (
+      direction === "right" &&
+      !favoritedIds.has(current.shopifyProductId) &&
+      atSaveLimit
+    ) {
+      setLimitMessage(
+        "You can save up to ten dresses. Remove one to save another.",
+      );
+      return;
+    }
+
     setBusy(true);
     setOffsetX(direction === "right" ? 420 : -420);
     try {
       if (direction === "right") {
         if (!favoritedIds.has(current.shopifyProductId)) {
+          setLimitMessage(null);
           await onSave(current);
         } else {
           setSkippedIds((prev) => new Set(prev).add(current.shopifyProductId));
@@ -116,6 +141,12 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
       } else {
         setSkippedIds((prev) => new Set(prev).add(current.shopifyProductId));
       }
+    } catch (err) {
+      setLimitMessage(
+        err instanceof Error
+          ? err.message
+          : "You can save up to ten dresses. Remove one to save another.",
+      );
     } finally {
       setBusy(false);
       setOffsetX(0);
@@ -154,6 +185,13 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
 
   return (
     <div className="w-full space-y-5">
+      {limitMessage || atSaveLimit ? (
+        <p className="rounded-xl bg-[var(--blush-soft)] px-4 py-3 text-sm text-[var(--ink)] ring-1 ring-[var(--blush)]">
+          {limitMessage ||
+            "You can save up to ten dresses. Remove one to save another."}
+        </p>
+      ) : null}
+
       {/* Same content width as Favorites: filters + photo fill the band */}
       <div className="grid w-full items-stretch gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:gap-6">
         {/* Filters */}
@@ -325,7 +363,7 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
                     type="button"
                     disabled={busy}
                     onClick={() => decide("left")}
-                    className="absolute left-0 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white px-3 py-3 text-sm font-semibold text-[var(--ink)] shadow-md ring-1 ring-black/10 disabled:opacity-50 sm:px-4"
+                    className="absolute left-2 top-1/2 z-20 -translate-y-1/2 rounded-full bg-white px-3 py-3 text-sm font-semibold text-[var(--ink)] shadow-md ring-1 ring-black/10 disabled:opacity-50 sm:left-3 sm:px-4"
                   >
                     Skip
                   </button>
@@ -334,7 +372,7 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
                     type="button"
                     disabled={busy}
                     onClick={() => decide("right")}
-                    className="absolute right-0 top-1/2 z-20 translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--ink)] px-3 py-3 text-sm font-semibold text-white shadow-md disabled:opacity-50 sm:px-4"
+                    className="absolute right-2 top-1/2 z-20 -translate-y-1/2 rounded-full bg-[var(--ink)] px-3 py-3 text-sm font-semibold text-white shadow-md disabled:opacity-50 sm:right-3 sm:px-4"
                   >
                     {currentAlreadySaved ? "Next" : "Save"}
                   </button>
@@ -386,17 +424,24 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
                     ) : null}
 
                     {hasMorePhotos ? (
-                      <button
-                        type="button"
-                        className="absolute bottom-4 right-4 z-10 rounded-full bg-black/55 px-3 py-2 text-xs font-medium text-white backdrop-blur-sm"
+                      <div
+                        className="absolute bottom-4 right-4 z-10"
                         onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setImageIndex((i) => (i + 1) % photos.length);
-                        }}
                       >
-                        More photos · {imageIndex + 1}/{photos.length}
-                      </button>
+                        <MorePhotosControl
+                          variant="deck"
+                          index={imageIndex}
+                          count={photos.length}
+                          onPrev={() =>
+                            setImageIndex(
+                              (i) => (i - 1 + photos.length) % photos.length,
+                            )
+                          }
+                          onNext={() =>
+                            setImageIndex((i) => (i + 1) % photos.length)
+                          }
+                        />
+                      </div>
                     ) : null}
 
                     <div
@@ -423,6 +468,7 @@ export function SwipeDeck({ dresses, favoritedIds, onSave }: Props) {
         <DressDetailsDrawer
           title={current.title}
           descriptionHtml={current.descriptionHtml}
+          shopifyProductId={current.shopifyProductId}
           productUrl={current.productUrl}
           onClose={() => setShowDetails(false)}
         />

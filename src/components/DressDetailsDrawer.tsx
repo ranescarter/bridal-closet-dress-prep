@@ -6,6 +6,8 @@ import { stripHtml } from "@/lib/filters";
 type Props = {
   title: string;
   descriptionHtml: string | null;
+  /** When descriptionHtml is null, fetch from catalog by product id. */
+  shopifyProductId?: string | null;
   productUrl: string | null;
   onClose: () => void;
 };
@@ -13,11 +15,46 @@ type Props = {
 export function DressDetailsDrawer({
   title,
   descriptionHtml,
+  shopifyProductId = null,
   productUrl,
   onClose,
 }: Props) {
-  const description = stripHtml(descriptionHtml);
+  const [loadedHtml, setLoadedHtml] = useState<string | null>(descriptionHtml);
+  const [loadingDescription, setLoadingDescription] = useState(
+    !descriptionHtml && Boolean(shopifyProductId),
+  );
   const [entered, setEntered] = useState(false);
+
+  useEffect(() => {
+    setLoadedHtml(descriptionHtml);
+    setLoadingDescription(!descriptionHtml && Boolean(shopifyProductId));
+  }, [descriptionHtml, shopifyProductId]);
+
+  useEffect(() => {
+    if (descriptionHtml || !shopifyProductId) return;
+
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(
+          `/api/dresses/description?id=${encodeURIComponent(shopifyProductId!)}`,
+        );
+        const data = await res.json();
+        if (!cancelled && res.ok) {
+          setLoadedHtml(data.descriptionHtml || null);
+        }
+      } catch {
+        // Keep empty description on failure.
+      } finally {
+        if (!cancelled) setLoadingDescription(false);
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [descriptionHtml, shopifyProductId]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setEntered(true));
@@ -33,6 +70,8 @@ export function DressDetailsDrawer({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [onClose]);
+
+  const description = stripHtml(loadedHtml);
 
   return (
     <div
@@ -81,7 +120,9 @@ export function DressDetailsDrawer({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {description ? (
+          {loadingDescription ? (
+            <p className="text-base text-[var(--muted)]">Loading description…</p>
+          ) : description ? (
             <p className="whitespace-pre-line text-base leading-relaxed text-[var(--muted)]">
               {description}
             </p>

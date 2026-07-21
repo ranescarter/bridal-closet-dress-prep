@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FavoritesGrid } from "@/components/FavoritesGrid";
 import { SwipeDeck } from "@/components/SwipeDeck";
 import { formatAppointmentFull } from "@/lib/appointments";
+import { MAX_FAVORITES, sortFavoritesByTitle } from "@/lib/favorites";
 import type { DressCard, DressPrepFavorite, DressPrepSession } from "@/lib/types";
 import { copyText, guestSessionUrl } from "@/lib/urls";
 
@@ -30,31 +31,73 @@ export function SessionPage({ token }: Props) {
     [favorites],
   );
 
-  const loadSession = useCallback(async () => {
-    const res = await fetch(`/api/sessions/${token}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Session not found");
-    setSession(data.session);
-    setRole(data.role);
-    setFavorites(data.favorites || []);
-  }, [token]);
-
   useEffect(() => {
     let cancelled = false;
+    const dressesAbort = new AbortController();
 
     async function boot() {
       setLoading(true);
       setError(null);
       try {
-        await loadSession();
-        const dressRes = await fetch("/api/dresses");
+        // Start catalog fetch immediately; abort if this turns out to be F&F.
+        const dressesPromise = fetch("/api/dresses", {
+          signal: dressesAbort.signal,
+        }).catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === "AbortError") {
+            return null;
+          }
+          throw err;
+        });
+
+        const sessionRes = await fetch(`/api/sessions/${token}`);
+        const sessionData = await sessionRes.json();
+        if (!sessionRes.ok) {
+          dressesAbort.abort();
+          throw new Error(sessionData.error || "Session not found");
+        }
+        if (cancelled) return;
+
+        const nextRole = sessionData.role as "client" | "staff";
+        const nextFavorites = (sessionData.favorites ||
+          []) as DressPrepFavorite[];
+        setSession(sessionData.session);
+        setRole(nextRole);
+        setFavorites(nextFavorites);
+
+        if (nextRole === "client") {
+          const dressRes = await dressesPromise;
+          if (!dressRes) return;
+          const dressData = await dressRes.json();
+          if (!dressRes.ok) {
+            throw new Error(dressData.error || "Could not load dresses");
+          }
+          if (!cancelled) setDresses(dressData.dresses || []);
+          return;
+        }
+
+        dressesAbort.abort();
+
+        // F&F: only hydrate photos for saved dresses (not the full catalog).
+        const ids = nextFavorites
+          .map((f) => f.shopify_product_id)
+          .filter(Boolean);
+        if (ids.length === 0) {
+          if (!cancelled) setDresses([]);
+          return;
+        }
+        const dressRes = await fetch(
+          `/api/dresses?ids=${encodeURIComponent(ids.join(","))}`,
+        );
         const dressData = await dressRes.json();
-        if (!dressRes.ok) throw new Error(dressData.error || "Could not load dresses");
+        if (!dressRes.ok) {
+          if (!cancelled) setDresses([]);
+          return;
+        }
         if (!cancelled) setDresses(dressData.dresses || []);
       } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load");
-        }
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -63,10 +106,20 @@ export function SessionPage({ token }: Props) {
     void boot();
     return () => {
       cancelled = true;
+      dressesAbort.abort();
     };
-  }, [loadSession]);
+  }, [token]);
 
   async function saveFavorite(dress: DressCard) {
+    if (
+      favorites.length >= MAX_FAVORITES &&
+      !favorites.some((f) => f.shopify_product_id === dress.shopifyProductId)
+    ) {
+      throw new Error(
+        `You can save up to ${MAX_FAVORITES} dresses. Remove one to save another.`,
+      );
+    }
+
     const res = await fetch(`/api/sessions/${token}/favorites`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -85,7 +138,7 @@ export function SessionPage({ token }: Props) {
       if (prev.some((f) => f.shopify_product_id === dress.shopifyProductId)) {
         return prev;
       }
-      return [...prev, data.favorite];
+      return sortFavoritesByTitle([...prev, data.favorite]);
     });
   }
 
@@ -121,6 +174,8 @@ export function SessionPage({ token }: Props) {
   }
 
   const canEdit = role === "client";
+  const atSaveLimit = favorites.length >= MAX_FAVORITES;
+  const nearSaveLimit = favorites.length === MAX_FAVORITES - 1;
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
@@ -155,17 +210,24 @@ export function SessionPage({ token }: Props) {
               Prep for your appointment
             </h2>
             <p className="text-sm text-[var(--muted)] sm:text-base">
-              Skip or Save beside the photo — or swipe left / right. Use filters
+              Skip or Save beside the photo, or swipe left or right. Use filters
               to narrow the list.
             </p>
             <p className="text-sm text-[var(--muted)] sm:text-base">
-              Save a few you&apos;d like to try — we&apos;ll have them ready when
-              you arrive.
+              Save up to ten dresses you would like to try. We will have them
+              ready when you arrive.
             </p>
+            {nearSaveLimit ? (
+              <p className="rounded-xl bg-[var(--blush-soft)] px-4 py-3 text-sm text-[var(--ink)] ring-1 ring-[var(--blush)]">
+                You have one save left. Remove a dress below if you want to make
+                room for another.
+              </p>
+            ) : null}
           </div>
           <SwipeDeck
             dresses={dresses}
             favoritedIds={favoritedIds}
+            atSaveLimit={atSaveLimit}
             onSave={saveFavorite}
           />
         </section>
@@ -176,15 +238,24 @@ export function SessionPage({ token }: Props) {
           canEdit ? "border-t border-[var(--blush)] pt-6" : ""
         }`}
       >
-        <div className="flex items-end justify-between gap-3">
-          <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">
-            {canEdit
-              ? "These are the dresses you saved"
-              : `These are the dresses ${firstName(session.client_name)} chose`}
-          </h2>
-          <p className="shrink-0 text-sm text-[var(--muted)]">
-            {favorites.length} saved
-          </p>
+        <div className="space-y-1">
+          <div className="flex items-end justify-between gap-3">
+            <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">
+              {canEdit
+                ? "These are the dresses you saved"
+                : `These are the dresses ${firstName(session.client_name)} chose`}
+            </h2>
+            <p className="shrink-0 text-sm text-[var(--muted)]">
+              {favorites.length} / {MAX_FAVORITES} saved
+            </p>
+          </div>
+          <div className="space-y-1 text-sm text-[var(--muted)] sm:text-base">
+            <p>Tap a photo to view a larger image.</p>
+            <p>
+              Side arrows change which dress you&apos;re viewing. The Image
+              arrows change photos of the same dress.
+            </p>
+          </div>
         </div>
         <FavoritesGrid
           favorites={favorites}
