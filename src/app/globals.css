@@ -29,6 +29,19 @@ body {
   min-height: 100vh;
 }
 
+@keyframes brand-loading-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+.brand-loading-bar {
+  animation: brand-loading-slide 1.2s ease-in-out infinite;
+}
+
 a {
   color: inherit;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { BrandLoadingState } from "@/components/BrandLoadingState";
 import { FavoritesGrid } from "@/components/FavoritesGrid";
 import { SwipeDeck } from "@/components/SwipeDeck";
 import { formatAppointmentFull } from "@/lib/appointments";
@@ -23,7 +24,9 @@ export function SessionPage({ token }: Props) {
   const [favorites, setFavorites] = useState<DressPrepFavorite[]>([]);
   const [dresses, setDresses] = useState<DressCard[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [dressesLoading, setDressesLoading] = useState(true);
+  const [dressesError, setDressesError] = useState<string | null>(null);
   const [copiedShare, setCopiedShare] = useState(false);
 
   const favoritedIds = useMemo(
@@ -36,10 +39,12 @@ export function SessionPage({ token }: Props) {
     const dressesAbort = new AbortController();
 
     async function boot() {
-      setLoading(true);
+      setSessionLoading(true);
+      setDressesLoading(true);
       setError(null);
+      setDressesError(null);
+
       try {
-        // Start catalog fetch immediately; abort if this turns out to be F&F.
         const dressesPromise = fetch("/api/dresses", {
           signal: dressesAbort.signal,
         }).catch((err: unknown) => {
@@ -63,43 +68,68 @@ export function SessionPage({ token }: Props) {
         setSession(sessionData.session);
         setRole(nextRole);
         setFavorites(nextFavorites);
+        setSessionLoading(false);
 
         if (nextRole === "client") {
-          const dressRes = await dressesPromise;
-          if (!dressRes) return;
-          const dressData = await dressRes.json();
-          if (!dressRes.ok) {
-            throw new Error(dressData.error || "Could not load dresses");
+          try {
+            const dressRes = await dressesPromise;
+            if (cancelled) return;
+            if (!dressRes) {
+              setDressesLoading(false);
+              return;
+            }
+            const dressData = await dressRes.json();
+            if (!dressRes.ok) {
+              throw new Error(dressData.error || "Could not load dresses");
+            }
+            setDresses(dressData.dresses || []);
+          } catch (err) {
+            if (cancelled) return;
+            if (err instanceof DOMException && err.name === "AbortError") return;
+            setDressesError(
+              err instanceof Error ? err.message : "Could not load dresses",
+            );
+          } finally {
+            if (!cancelled) setDressesLoading(false);
           }
-          if (!cancelled) setDresses(dressData.dresses || []);
           return;
         }
 
         dressesAbort.abort();
 
-        // F&F: only hydrate photos for saved dresses (not the full catalog).
         const ids = nextFavorites
           .map((f) => f.shopify_product_id)
           .filter(Boolean);
         if (ids.length === 0) {
-          if (!cancelled) setDresses([]);
+          if (!cancelled) {
+            setDresses([]);
+            setDressesLoading(false);
+          }
           return;
         }
-        const dressRes = await fetch(
-          `/api/dresses?ids=${encodeURIComponent(ids.join(","))}`,
-        );
-        const dressData = await dressRes.json();
-        if (!dressRes.ok) {
+
+        try {
+          const dressRes = await fetch(
+            `/api/dresses?ids=${encodeURIComponent(ids.join(","))}`,
+          );
+          const dressData = await dressRes.json();
+          if (cancelled) return;
+          if (!dressRes.ok) {
+            setDresses([]);
+          } else {
+            setDresses(dressData.dresses || []);
+          }
+        } catch {
           if (!cancelled) setDresses([]);
-          return;
+        } finally {
+          if (!cancelled) setDressesLoading(false);
         }
-        if (!cancelled) setDresses(dressData.dresses || []);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Failed to load");
-      } finally {
-        if (!cancelled) setLoading(false);
+        setSessionLoading(false);
+        setDressesLoading(false);
       }
     }
 
@@ -161,8 +191,8 @@ export function SessionPage({ token }: Props) {
     window.setTimeout(() => setCopiedShare(false), 2000);
   }
 
-  if (loading) {
-    return <p className="text-center text-[var(--muted)]">Loading…</p>;
+  if (sessionLoading) {
+    return <BrandLoadingState variant="page" />;
   }
 
   if (error || !session || !role) {
@@ -224,12 +254,23 @@ export function SessionPage({ token }: Props) {
               </p>
             ) : null}
           </div>
-          <SwipeDeck
-            dresses={dresses}
-            favoritedIds={favoritedIds}
-            atSaveLimit={atSaveLimit}
-            onSave={saveFavorite}
-          />
+          {dressesLoading ? (
+            <BrandLoadingState
+              variant="panel"
+              hint="Loading dresses…"
+            />
+          ) : dressesError ? (
+            <p className="rounded-2xl bg-red-50 px-4 py-6 text-center text-red-700">
+              {dressesError}
+            </p>
+          ) : (
+            <SwipeDeck
+              dresses={dresses}
+              favoritedIds={favoritedIds}
+              atSaveLimit={atSaveLimit}
+              onSave={saveFavorite}
+            />
+          )}
         </section>
       ) : null}
 

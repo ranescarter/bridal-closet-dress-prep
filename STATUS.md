@@ -18,6 +18,7 @@
 - [x] Visual dress-style reference using live Shopify images
 - [x] Family read-only link (staff_token) + lightbox how-to copy
 - [x] Branding (logo, fonts, blush theme)
+  - Brand loading state (tagline + bar) while session/catalog loads
 - [x] Price Range filter (banded; no raw prices in UI)
 - [x] Designer filter from Shopify vendors (match vendor + tags)
 - [x] Catalog load performance (server cache, slimmer payload, F&F skips full catalog)
