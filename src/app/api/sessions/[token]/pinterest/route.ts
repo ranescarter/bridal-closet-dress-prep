@@ -20,7 +20,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const raw = body.url;
 
     let pinterestUrl: string | null = null;
-    let pinterestUpdatedAt: string | null = new Date().toISOString();
+    const pinterestUpdatedAt: string | null = new Date().toISOString();
 
     if (raw == null || String(raw).trim() === "") {
       pinterestUrl = null;
