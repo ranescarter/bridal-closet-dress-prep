@@ -2,11 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BrandLoadingState } from "@/components/BrandLoadingState";
+import { DressDetailsDrawer } from "@/components/DressDetailsDrawer";
 import { FavoritesGrid } from "@/components/FavoritesGrid";
+import { MorePhotosControl } from "@/components/MorePhotosControl";
 import { PinterestInspiration } from "@/components/PinterestInspiration";
+import { SectionCard } from "@/components/SectionCard";
 import { SwipeDeck } from "@/components/SwipeDeck";
 import { formatAppointmentFull } from "@/lib/appointments";
+import { dressPhotos, shopifyCdnUrl } from "@/lib/dresses";
 import { MAX_FAVORITES, sortFavoritesByTitle } from "@/lib/favorites";
+import {
+  formatEstimatedArrivalLine,
+  hasSaidYesContent,
+} from "@/lib/said-yes";
 import type { DressCard, DressPrepFavorite, DressPrepSession } from "@/lib/types";
 import { copyText, guestSessionUrl } from "@/lib/urls";
 
@@ -19,6 +27,13 @@ function firstName(fullName: string) {
   return part || fullName;
 }
 
+function hasSelectedDress(session: DressPrepSession) {
+  return Boolean(
+    (session.said_yes_title && session.said_yes_title.trim()) ||
+      session.said_yes_shopify_product_id,
+  );
+}
+
 export function SessionPage({ token }: Props) {
   const [session, setSession] = useState<DressPrepSession | null>(null);
   const [role, setRole] = useState<"client" | "staff" | null>(null);
@@ -29,11 +44,17 @@ export function SessionPage({ token }: Props) {
   const [dressesLoading, setDressesLoading] = useState(true);
   const [dressesError, setDressesError] = useState<string | null>(null);
   const [copiedShare, setCopiedShare] = useState(false);
+  const [saidYesDetailsOpen, setSaidYesDetailsOpen] = useState(false);
+  const [saidYesPhotoIndex, setSaidYesPhotoIndex] = useState(0);
 
   const favoritedIds = useMemo(
     () => new Set(favorites.map((f) => f.shopify_product_id)),
     [favorites],
   );
+
+  useEffect(() => {
+    setSaidYesPhotoIndex(0);
+  }, [session?.said_yes_shopify_product_id, session?.said_yes_image_url]);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,7 +104,26 @@ export function SessionPage({ token }: Props) {
             if (!dressRes.ok) {
               throw new Error(dressData.error || "Could not load dresses");
             }
-            setDresses(dressData.dresses || []);
+            let nextDresses = (dressData.dresses || []) as DressCard[];
+            const saidYesId = sessionData.session
+              ?.said_yes_shopify_product_id as string | null | undefined;
+            if (
+              saidYesId &&
+              !nextDresses.some((d) => d.shopifyProductId === saidYesId)
+            ) {
+              try {
+                const extraRes = await fetch(
+                  `/api/dresses?ids=${encodeURIComponent(saidYesId)}`,
+                );
+                const extraData = await extraRes.json();
+                if (extraRes.ok && Array.isArray(extraData.dresses)) {
+                  nextDresses = [...nextDresses, ...extraData.dresses];
+                }
+              } catch {
+                // Keep catalog-only if said-yes lookup fails.
+              }
+            }
+            setDresses(nextDresses);
           } catch (err) {
             if (cancelled) return;
             if (err instanceof DOMException && err.name === "AbortError") return;
@@ -98,9 +138,10 @@ export function SessionPage({ token }: Props) {
 
         dressesAbort.abort();
 
-        const ids = nextFavorites
-          .map((f) => f.shopify_product_id)
-          .filter(Boolean);
+        const ids = [
+          ...nextFavorites.map((f) => f.shopify_product_id),
+          sessionData.session?.said_yes_shopify_product_id,
+        ].filter(Boolean) as string[];
         if (ids.length === 0) {
           if (!cancelled) {
             setDresses([]);
@@ -110,8 +151,9 @@ export function SessionPage({ token }: Props) {
         }
 
         try {
+          const uniqueIds = [...new Set(ids)];
           const dressRes = await fetch(
-            `/api/dresses?ids=${encodeURIComponent(ids.join(","))}`,
+            `/api/dresses?ids=${encodeURIComponent(uniqueIds.join(","))}`,
           );
           const dressData = await dressRes.json();
           if (cancelled) return;
@@ -207,13 +249,35 @@ export function SessionPage({ token }: Props) {
   const canEdit = role === "client";
   const atSaveLimit = favorites.length >= MAX_FAVORITES;
   const nearSaveLimit = favorites.length === MAX_FAVORITES - 1;
+  const showSaidYes = hasSaidYesContent(session);
+  const dressSelected = hasSelectedDress(session);
+  const arrivalLine = formatEstimatedArrivalLine(session.estimated_arrival_on);
+  const saidYesDress = session.said_yes_shopify_product_id
+    ? dresses.find(
+        (d) => d.shopifyProductId === session.said_yes_shopify_product_id,
+      )
+    : undefined;
+  const saidYesPhotos = dressPhotos(
+    saidYesDress?.imageUrls,
+    saidYesDress?.imageUrl ?? session.said_yes_image_url,
+  );
+  const saidYesPhoto =
+    saidYesPhotos[
+      Math.min(saidYesPhotoIndex, Math.max(saidYesPhotos.length - 1, 0))
+    ] ?? null;
+  const saidYesImage = shopifyCdnUrl(saidYesPhoto, 1400) || saidYesPhoto;
+  const saidYesSubtitle = arrivalLine
+    ? arrivalLine
+    : dressSelected
+      ? "The gown chosen for the wedding day."
+      : "Dress details coming soon.";
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
-      <div className="flex flex-col gap-3 border-b border-[var(--blush)] pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="min-w-0 flex-1 space-y-3">
           <div className="space-y-1">
-            <h1 className="font-[family-name:var(--font-display)] text-2xl font-normal text-[var(--ink)] sm:text-3xl">
+            <h1 className="font-[family-name:var(--font-display)] text-3xl font-normal text-[var(--ink)] sm:text-4xl">
               {session.client_name}
             </h1>
             <p className="text-sm text-[var(--muted)] sm:text-base">
@@ -223,24 +287,26 @@ export function SessionPage({ token }: Props) {
               {formatAppointmentFull(session.appointment_at)}
             </p>
           </div>
-          <PinterestInspiration
-            token={token}
-            pinterestUrl={session.pinterest_url}
-            canEdit={canEdit}
-            onSaved={(url) =>
-              setSession((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      pinterest_url: url,
-                      pinterest_updated_at: url
-                        ? new Date().toISOString()
-                        : null,
-                    }
-                  : prev,
-              )
-            }
-          />
+          {!dressSelected ? (
+            <PinterestInspiration
+              token={token}
+              pinterestUrl={session.pinterest_url}
+              canEdit={canEdit}
+              onSaved={(url) =>
+                setSession((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        pinterest_url: url,
+                        pinterest_updated_at: url
+                          ? new Date().toISOString()
+                          : null,
+                      }
+                    : prev,
+                )
+              }
+            />
+          ) : null}
         </div>
 
         {canEdit ? (
@@ -252,80 +318,193 @@ export function SessionPage({ token }: Props) {
             {copiedShare ? "Copied" : "Copy family link"}
           </button>
         ) : null}
-      </div>
+      </header>
+
+      <div className="h-0.5 w-full bg-[var(--blush)]" />
+
+      {showSaidYes ? (
+        <>
+          <SectionCard
+            title="I said yes to the dress!"
+            subtitle={saidYesSubtitle}
+            collapsible
+            defaultOpen
+          >
+            {dressSelected && session.said_yes_title ? (
+              <div className="mx-auto flex w-full max-w-[min(100%,28rem)] flex-col items-center gap-4 sm:max-w-[min(100%,34rem)]">
+                <h3 className="text-center font-[family-name:var(--font-display)] text-2xl leading-snug text-[var(--ink)] sm:text-3xl">
+                  {session.said_yes_title}
+                </h3>
+                {saidYesImage ? (
+                  <div className="relative w-full overflow-hidden rounded-2xl bg-[#eee]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={saidYesImage}
+                      alt={session.said_yes_title}
+                      className="aspect-[3/4] w-full object-contain object-top"
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-1 p-1">
+                      <button
+                        type="button"
+                        className="pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--ink)]"
+                        onClick={() => setSaidYesDetailsOpen(true)}
+                        aria-label={`View description for ${session.said_yes_title}`}
+                        title="View description"
+                      >
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--blush-soft)] ring-1 ring-[var(--blush)] backdrop-blur-sm">
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-5 w-5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            aria-hidden
+                          >
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M12 11v6" strokeLinecap="round" />
+                            <circle
+                              cx="12"
+                              cy="8"
+                              r="1"
+                              fill="currentColor"
+                              stroke="none"
+                            />
+                          </svg>
+                        </span>
+                      </button>
+
+                      {saidYesPhotos.length > 1 ? (
+                        <MorePhotosControl
+                          variant="overlay"
+                          index={Math.min(
+                            saidYesPhotoIndex,
+                            saidYesPhotos.length - 1,
+                          )}
+                          count={saidYesPhotos.length}
+                          onPrev={() =>
+                            setSaidYesPhotoIndex(
+                              (prev) =>
+                                (prev - 1 + saidYesPhotos.length) %
+                                saidYesPhotos.length,
+                            )
+                          }
+                          onNext={() =>
+                            setSaidYesPhotoIndex(
+                              (prev) => (prev + 1) % saidYesPhotos.length,
+                            )
+                          }
+                        />
+                      ) : (
+                        <span />
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSaidYesDetailsOpen(true)}
+                    className="text-sm font-medium text-[var(--ink)] underline"
+                  >
+                    View dress details
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-center text-sm text-[var(--muted)] sm:text-base">
+                Dress details coming soon.
+              </p>
+            )}
+          </SectionCard>
+
+          {saidYesDetailsOpen && session.said_yes_title ? (
+            <DressDetailsDrawer
+              title={session.said_yes_title}
+              descriptionHtml={saidYesDress?.descriptionHtml ?? null}
+              shopifyProductId={session.said_yes_shopify_product_id}
+              productUrl={session.said_yes_product_url}
+              onClose={() => setSaidYesDetailsOpen(false)}
+            />
+          ) : null}
+
+          <div className="h-0.5 w-full bg-[var(--blush)]" />
+        </>
+      ) : null}
 
       {canEdit ? (
-        <section className="space-y-4">
-          <div className="space-y-1 border-b border-[var(--blush)] pb-4">
-            <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">
-              Prep for your appointment
-            </h2>
-            <p className="text-sm text-[var(--muted)] sm:text-base">
-              Skip or Save beside the photo, or swipe left or right. Use filters
-              to narrow the list.
-            </p>
-            <p className="text-sm text-[var(--muted)] sm:text-base">
-              Save up to ten dresses you would like to try. We will have them
-              ready when you arrive.
-            </p>
+        <>
+          <SectionCard
+            title="Prep for your appointment"
+            collapsible
+            defaultOpen={!dressSelected}
+            subtitle={
+              <div className="space-y-1">
+                <p>
+                  Skip or Save beside the photo, or swipe left or right. Use
+                  filters to narrow the list.
+                </p>
+                <p>
+                  Save up to ten dresses you would like to try. We will have them
+                  ready when you arrive.
+                </p>
+              </div>
+            }
+          >
             {nearSaveLimit ? (
               <p className="rounded-xl bg-[var(--blush-soft)] px-4 py-3 text-sm text-[var(--ink)] ring-1 ring-[var(--blush)]">
                 You have one save left. Remove a dress below if you want to make
                 room for another.
               </p>
             ) : null}
-          </div>
-          {dressesLoading ? (
-            <BrandLoadingState
-              variant="panel"
-              hint="Loading dresses…"
-            />
-          ) : dressesError ? (
-            <p className="rounded-2xl bg-red-50 px-4 py-6 text-center text-red-700">
-              {dressesError}
-            </p>
-          ) : (
-            <SwipeDeck
-              dresses={dresses}
-              favoritedIds={favoritedIds}
-              atSaveLimit={atSaveLimit}
-              onSave={saveFavorite}
-            />
-          )}
-        </section>
+            {dressesLoading ? (
+              <BrandLoadingState variant="panel" hint="Loading dresses…" />
+            ) : dressesError ? (
+              <p className="rounded-2xl bg-red-50 px-4 py-6 text-center text-red-700">
+                {dressesError}
+              </p>
+            ) : (
+              <SwipeDeck
+                dresses={dresses}
+                favoritedIds={favoritedIds}
+                atSaveLimit={atSaveLimit}
+                onSave={saveFavorite}
+              />
+            )}
+          </SectionCard>
+
+          <div className="h-0.5 w-full bg-[var(--blush)]" />
+        </>
       ) : null}
 
-      <section
-        className={`space-y-4 ${
-          canEdit ? "border-t border-[var(--blush)] pt-6" : ""
-        }`}
-      >
-        <div className="space-y-1">
-          <div className="flex items-end justify-between gap-3">
-            <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">
-              {canEdit
-                ? "These are the dresses you saved"
-                : `These are the dresses ${firstName(session.client_name)} chose`}
-            </h2>
-            <p className="shrink-0 text-sm text-[var(--muted)]">
-              {favorites.length} / {MAX_FAVORITES} saved
-            </p>
-          </div>
-          <div className="space-y-1 text-sm text-[var(--muted)] sm:text-base">
+      <SectionCard
+        title={
+          canEdit
+            ? "These are the dresses you saved"
+            : `These are the dresses ${firstName(session.client_name)} chose`
+        }
+        collapsible
+        defaultOpen={!dressSelected}
+        subtitle={
+          <div className="space-y-1">
             <p>Tap a photo to view a larger image.</p>
             <p>
               Side arrows change which dress you&apos;re viewing. The Image
               arrows change photos of the same dress.
             </p>
           </div>
-        </div>
+        }
+        headerRight={
+          <p className="text-sm font-medium text-[var(--ink)]">
+            {favorites.length} / {MAX_FAVORITES} saved
+          </p>
+        }
+      >
         <FavoritesGrid
           favorites={favorites}
           dresses={dresses}
           canEdit={canEdit}
           onRemove={canEdit ? removeFavorite : undefined}
         />
-      </section>
+      </SectionCard>
     </div>
   );
 }

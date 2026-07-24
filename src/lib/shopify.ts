@@ -297,3 +297,173 @@ export function filterDressesByIds(
   const wanted = new Set(ids);
   return dresses.filter((dress) => wanted.has(dress.shopifyProductId));
 }
+
+/**
+ * Accepts admin product URLs, storefront /products/{handle} URLs, numeric ids,
+ * or GraphQL GIDs. Returns a product GID and/or handle to look up.
+ */
+export function parseShopifyProductInput(raw: string): {
+  productGid?: string;
+  handle?: string;
+} {
+  const input = raw.trim();
+  if (!input) return {};
+
+  const gidMatch = input.match(/gid:\/\/shopify\/Product\/(\d+)/i);
+  if (gidMatch) {
+    return { productGid: `gid://shopify/Product/${gidMatch[1]}` };
+  }
+
+  if (/^\d+$/.test(input)) {
+    return { productGid: `gid://shopify/Product/${input}` };
+  }
+
+  try {
+    const url = new URL(input);
+    const adminMatch = url.pathname.match(/\/products\/(\d+)(?:\/|$)/);
+    if (adminMatch) {
+      return { productGid: `gid://shopify/Product/${adminMatch[1]}` };
+    }
+    const handleMatch = url.pathname.match(/\/products\/([^/?#]+)(?:\/|$)/);
+    if (handleMatch) {
+      return { handle: decodeURIComponent(handleMatch[1]) };
+    }
+  } catch {
+    // not a URL
+  }
+
+  return {};
+}
+
+type ProductByIdResponse = {
+  product: {
+    id: string;
+    title: string;
+    handle: string;
+    status: string;
+    vendor: string;
+    descriptionHtml: string | null;
+    featuredImage: { url: string } | null;
+    media: {
+      nodes: Array<{
+        createdAt?: string;
+        image?: { url: string } | null;
+      } | null>;
+    };
+    onlineStoreUrl: string | null;
+  } | null;
+};
+
+type ProductByHandleResponse = {
+  productByHandle: ProductByIdResponse["product"];
+};
+
+function dressCardFromShopifyProduct(
+  product: NonNullable<ProductByIdResponse["product"]>,
+): DressCard {
+  const mediaPhotos = (product.media?.nodes || [])
+    .filter(
+      (node): node is { createdAt?: string; image?: { url: string } | null } =>
+        Boolean(node && node.image?.url),
+    )
+    .map((node) => ({
+      url: node.image!.url,
+      createdAt: node.createdAt || "",
+    }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  const rawUrls = mediaPhotos.map((photo) => photo.url);
+  if (rawUrls.length === 0 && product.featuredImage?.url) {
+    rawUrls.push(product.featuredImage.url);
+  }
+
+  const imageUrls = rawUrls
+    .slice(0, MAX_GALLERY_IMAGES)
+    .map((url) => shopifyCdnUrl(url, 1200) || url);
+
+  return {
+    shopifyProductId: product.id,
+    title: product.title,
+    handle: product.handle,
+    imageUrl: imageUrls[0] ?? null,
+    imageUrls,
+    productUrl: product.onlineStoreUrl,
+    tags: [],
+    vendor: (product.vendor || "").trim() || null,
+    descriptionHtml: product.descriptionHtml || null,
+    priceRangeId: null,
+  };
+}
+
+/** Look up any product in the shop (not limited to Gowns In Store). */
+export async function fetchShopifyProductByInput(
+  raw: string,
+): Promise<DressCard | null> {
+  const parsed = parseShopifyProductInput(raw);
+  if (!parsed.productGid && !parsed.handle) {
+    throw new Error(
+      "Paste a Shopify admin product link, storefront product link, or product id.",
+    );
+  }
+
+  let product: ProductByIdResponse["product"] = null;
+
+  if (parsed.productGid) {
+    const data = await shopifyAdminGraphql<ProductByIdResponse>(
+      `
+      query ProductById($id: ID!) {
+        product(id: $id) {
+          id
+          title
+          handle
+          status
+          vendor
+          descriptionHtml
+          featuredImage { url }
+          media(first: 6) {
+            nodes {
+              ... on MediaImage {
+                createdAt
+                image { url }
+              }
+            }
+          }
+          onlineStoreUrl
+        }
+      }
+      `,
+      { id: parsed.productGid },
+    );
+    product = data.product;
+  } else if (parsed.handle) {
+    const data = await shopifyAdminGraphql<ProductByHandleResponse>(
+      `
+      query ProductByHandle($handle: String!) {
+        productByHandle(handle: $handle) {
+          id
+          title
+          handle
+          status
+          vendor
+          descriptionHtml
+          featuredImage { url }
+          media(first: 6) {
+            nodes {
+              ... on MediaImage {
+                createdAt
+                image { url }
+              }
+            }
+          }
+          onlineStoreUrl
+        }
+      }
+      `,
+      { handle: parsed.handle },
+    );
+    product = data.productByHandle;
+  }
+
+  if (!product) return null;
+  return dressCardFromShopifyProduct(product);
+}

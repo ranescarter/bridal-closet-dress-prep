@@ -24,6 +24,12 @@ export type DressPrepSession = {
   appointment_at: string | null;
   pinterest_url: string | null;
   pinterest_updated_at: string | null;
+  said_yes_shopify_product_id: string | null;
+  said_yes_title: string | null;
+  said_yes_handle: string | null;
+  said_yes_image_url: string | null;
+  said_yes_product_url: string | null;
+  estimated_arrival_on: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -34,6 +40,10 @@ export type DressPrepSessionSummary = DressPrepSession & {
   favorites: Array<{
     id: string;
     title: string;
+    shopify_product_id: string;
+    image_url: string | null;
+    product_url: string | null;
+    handle: string | null;
   }>;
 };
 

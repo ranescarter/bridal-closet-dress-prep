@@ -2,6 +2,8 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { AppointmentTimePicker } from "@/components/AppointmentTimePicker";
+import { SaidYesStaffEditor } from "@/components/SaidYesStaffEditor";
+import { SectionCard } from "@/components/SectionCard";
 import { StaffCreateForm } from "@/components/StaffCreateForm";
 import { StaffLoginForm } from "@/components/StaffLoginForm";
 import {
@@ -15,7 +17,7 @@ import {
   to24HourTime,
   type Meridiem,
 } from "@/lib/appointments";
-import type { DressPrepSessionSummary } from "@/lib/types";
+import type { DressCard, DressPrepSessionSummary } from "@/lib/types";
 import { brideSessionUrl, copyText, guestSessionUrl } from "@/lib/urls";
 
 type CopiedKey = string | null;
@@ -76,7 +78,6 @@ export function StaffDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [copied, setCopied] = useState<CopiedKey>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -96,6 +97,8 @@ export function StaffDashboard() {
   const [editHasTime, setEditHasTime] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const [gownCatalog, setGownCatalog] = useState<DressCard[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
 
   function toggleExpanded(sessionId: string) {
     setExpandedIds((prev) => {
@@ -117,6 +120,20 @@ export function StaffDashboard() {
     if (!res.ok) throw new Error(data.error || "Could not load sessions");
     setSessions(data.sessions || []);
   }, []);
+
+  const loadGownCatalog = useCallback(async () => {
+    if (gownCatalog.length > 0) return;
+    setCatalogLoading(true);
+    try {
+      const res = await fetch("/api/dresses");
+      const data = await res.json();
+      if (res.ok) setGownCatalog(data.dresses || []);
+    } catch {
+      // Search still works on favorites without catalog.
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, [gownCatalog.length]);
 
   async function signOut() {
     await fetch("/api/staff/logout", { method: "POST" });
@@ -142,6 +159,7 @@ export function StaffDashboard() {
 
         setAuthStatus("authed");
         await loadSessions();
+        void loadGownCatalog();
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load");
@@ -154,7 +172,7 @@ export function StaffDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [loadSessions]);
+  }, [loadSessions, loadGownCatalog]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -525,8 +543,27 @@ export function StaffDashboard() {
                   {expanded ? (
                     <tr className="border-b border-black/5 bg-[var(--blush-soft)]/60 last:border-b-0">
                       <td colSpan={8} className="px-4 py-3">
-                        <div className="mb-3 text-sm">
-                          <span className="text-[var(--muted)]">Pinterest: </span>
+                        <SaidYesStaffEditor
+                          session={session}
+                          catalog={gownCatalog}
+                          catalogLoading={catalogLoading}
+                          onUnauthorized={() => setAuthStatus("login")}
+                          onSaved={(next) =>
+                            setSessions((prev) =>
+                              prev.map((row) =>
+                                row.id === next.id ? { ...row, ...next } : row,
+                              ),
+                            )
+                          }
+                        />
+                        <div className="my-3 h-0.5 w-full bg-[var(--blush)]" />
+                        <div className="mb-3 overflow-hidden rounded-xl bg-white ring-1 ring-[var(--blush)]">
+                          <div className="bg-[var(--blush-soft)] px-3 py-2">
+                            <p className="text-sm font-medium text-[var(--ink)]">
+                              Pinterest
+                            </p>
+                          </div>
+                          <div className="px-3 py-2 text-sm">
                           {session.pinterest_url ? (
                             <a
                               href={session.pinterest_url}
@@ -542,15 +579,17 @@ export function StaffDashboard() {
                           ) : (
                             <span className="text-[var(--muted)]">Not added</span>
                           )}
+                          </div>
                         </div>
+                        <div className="my-3 h-0.5 w-full bg-[var(--blush)]" />
                         {favorites.length === 0 ? (
                           <p className="text-sm text-[var(--muted)]">
                             No favorites yet.
                           </p>
                         ) : (
-                          <table className="w-full max-w-xl border-collapse overflow-hidden rounded-lg text-left text-sm ring-1 ring-[var(--blush)]">
+                          <table className="w-full max-w-xl border-collapse overflow-hidden rounded-xl text-left text-sm ring-1 ring-[var(--blush)]">
                             <thead>
-                              <tr className="bg-[var(--blush)] text-[var(--ink)]">
+                              <tr className="bg-[var(--blush-soft)] text-[var(--ink)]">
                                 <th className="border-b border-r border-[var(--blush)] px-3 py-2 font-medium">
                                   Dress
                                 </th>
@@ -654,93 +693,79 @@ export function StaffDashboard() {
         ) : null}
       </header>
 
-      <section className="overflow-hidden rounded-2xl ring-1 ring-black/5">
-        <button
-          type="button"
-          onClick={() => setShowHowItWorks((open) => !open)}
-          className="flex w-full items-center justify-between gap-3 bg-[var(--blush)] px-4 py-3 text-left sm:px-5"
-          aria-expanded={showHowItWorks}
-        >
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)] sm:text-2xl">
-            How these pages work
-          </h2>
-          <span className="text-lg text-[var(--ink)]" aria-hidden>
-            {showHowItWorks ? "−" : "+"}
-          </span>
-        </button>
-        {showHowItWorks ? (
-          <div className="space-y-3 bg-white/80 px-4 py-4 sm:px-5">
-            <dl className="space-y-2 text-sm leading-snug text-[var(--muted)]">
-              <div>
-                <dt className="inline font-bold text-[var(--ink)]">Create link</dt>
-                <dd className="m-0 inline">
-                  {" "}
-                  - Creates a prep page for a bride before her appointment. Her
-                  name and appointment date and time appear on the pages others
-                  can open.
-                </dd>
-              </div>
-              <div>
-                <dt className="inline font-bold text-[var(--ink)]">
-                  Bride&apos;s link
-                </dt>
-                <dd className="m-0 inline">
-                  {" "}
-                  - An editable page where the bride browses dresses available
-                  in the store and saves favorites. Saved dresses appear at the
-                  bottom of that page.
-                </dd>
-              </div>
-              <div>
-                <dt className="inline font-bold text-[var(--ink)]">
-                  Read only link
-                </dt>
-                <dd className="m-0 inline">
-                  {" "}
-                  - A shareable page that shows only what the bride has saved.
-                  Others can view favorites but cannot change them.
-                </dd>
-              </div>
-              <div>
-                <dt className="inline font-bold text-[var(--ink)]">
-                  Edit Appointment
-                </dt>
-                <dd className="m-0 inline">
-                  {" "}
-                  - Updates the appointment date and time if needed. This is
-                  only a reference on the linked pages for the bride and others.
-                </dd>
-              </div>
-              <div>
-                <dt className="inline font-bold text-[var(--ink)]">Remove</dt>
-                <dd className="m-0 inline">
-                  {" "}
-                  - Removes the row from these tables. Use after an appointment;
-                  linked pages for that bride will no longer work.
-                </dd>
-              </div>
-            </dl>
-            <div className="border-t border-black/5 pt-3">
-              <h3 className="text-sm font-bold text-[var(--ink)]">
-                Where the dresses come from
-              </h3>
-              <p className="mt-0.5 text-sm leading-snug text-[var(--muted)]">
-                Products on the bride&apos;s page come from Shopify: the{" "}
-                <span className="font-medium text-[var(--ink)]">
-                  Gowns In Store
-                </span>{" "}
-                collection, with status{" "}
-                <span className="font-medium text-[var(--ink)]">Active</span>.
-                Filters on that page use product{" "}
-                <span className="font-medium text-[var(--ink)]">tags</span>.
-                Category and Type are not used here.
-              </p>
-            </div>
+      <SectionCard
+        title="How these pages work"
+        collapsible
+        defaultOpen={false}
+      >
+        <dl className="space-y-2 text-sm leading-snug text-[var(--muted)]">
+          <div>
+            <dt className="inline font-bold text-[var(--ink)]">Create link</dt>
+            <dd className="m-0 inline">
+              {" "}
+              - Creates a prep page for a bride before her appointment. Her name
+              and appointment date and time appear on the pages others can open.
+            </dd>
           </div>
-        ) : null}
-      </section>
+          <div>
+            <dt className="inline font-bold text-[var(--ink)]">
+              Bride&apos;s link
+            </dt>
+            <dd className="m-0 inline">
+              {" "}
+              - An editable page where the bride browses dresses available in
+              the store and saves favorites. Saved dresses appear at the bottom
+              of that page.
+            </dd>
+          </div>
+          <div>
+            <dt className="inline font-bold text-[var(--ink)]">
+              Read only link
+            </dt>
+            <dd className="m-0 inline">
+              {" "}
+              - A shareable page that shows only what the bride has saved. Others
+              can view favorites but cannot change them.
+            </dd>
+          </div>
+          <div>
+            <dt className="inline font-bold text-[var(--ink)]">
+              Edit Appointment
+            </dt>
+            <dd className="m-0 inline">
+              {" "}
+              - Updates the appointment date and time if needed. This is only a
+              reference on the linked pages for the bride and others.
+            </dd>
+          </div>
+          <div>
+            <dt className="inline font-bold text-[var(--ink)]">Remove</dt>
+            <dd className="m-0 inline">
+              {" "}
+              - Removes the row from these tables. Use after an appointment;
+              linked pages for that bride will no longer work.
+            </dd>
+          </div>
+        </dl>
+        <div className="border-t border-black/5 pt-3">
+          <h3 className="text-sm font-bold text-[var(--ink)]">
+            Where the dresses come from
+          </h3>
+          <p className="mt-0.5 text-sm leading-snug text-[var(--muted)]">
+            Products on the bride&apos;s page come from Shopify: the{" "}
+            <span className="font-medium text-[var(--ink)]">Gowns In Store</span>{" "}
+            collection, with status{" "}
+            <span className="font-medium text-[var(--ink)]">Active</span>.
+            Filters on that page use product{" "}
+            <span className="font-medium text-[var(--ink)]">tags</span>. Category
+            and Type are not used here.
+          </p>
+        </div>
+      </SectionCard>
 
-      <div className="space-y-8 border-t border-[var(--blush)] pt-8">
+      <div className="h-0.5 w-full bg-[var(--blush)]" />
+
+      <div className="space-y-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="w-full max-w-md">
             <span className="sr-only">Search by bride name</span>
@@ -769,30 +794,32 @@ export function StaffDashboard() {
         {loading ? (
           <p className="text-[var(--muted)]">Loading sessions…</p>
         ) : (
-          <div className="space-y-8">
-            <section className="space-y-3">
-              <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">
-                Upcoming
-              </h2>
+          <div className="space-y-6">
+            <SectionCard
+              title="Upcoming"
+              subtitle={`${upcoming.length} appointment${upcoming.length === 1 ? "" : "s"}`}
+            >
               <SessionTable
                 rows={upcoming}
                 emptyLabel="No upcoming dress prep links."
                 section="upcoming"
                 sort={upcomingSort}
               />
-            </section>
+            </SectionCard>
 
-            <section className="space-y-3">
-              <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">
-                Past
-              </h2>
+            <div className="h-0.5 w-full bg-[var(--blush)]" />
+
+            <SectionCard
+              title="Past"
+              subtitle={`${past.length} appointment${past.length === 1 ? "" : "s"}`}
+            >
               <SessionTable
                 rows={past}
                 emptyLabel="No past appointments yet."
                 section="past"
                 sort={pastSort}
               />
-            </section>
+            </SectionCard>
           </div>
         )}
       </div>
