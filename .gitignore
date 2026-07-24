@@ -43,3 +43,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+
+# Vercel Recovery Codes
+b3870ae4-60137b2b
+d9fa97a3-55316ef1
+20d96b9e-1e314d2a
+20deafed-f7e5aa03
+4f67115f-539c006e
+4ab64977-ef58202f

@@ -66,7 +66,7 @@ export async function requireClientSession(token: string): Promise<DressPrepSess
   }
   if (resolved.role !== "client") {
     throw new SessionAccessError(
-      "Only the bride link can change favorites",
+      "Only the bride link can make this change",
       403,
     );
   }

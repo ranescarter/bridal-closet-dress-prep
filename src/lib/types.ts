@@ -22,6 +22,8 @@ export type DressPrepSession = {
   staff_token: string;
   client_name: string;
   appointment_at: string | null;
+  pinterest_url: string | null;
+  pinterest_updated_at: string | null;
   created_at: string;
   updated_at: string;
 };

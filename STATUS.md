@@ -32,6 +32,11 @@ First dress on a new bride link follows Shopify collection order (Manual sort on
 ## Next focus
 
 - [ ] **Filter Groups & Tags** — staff finishing Shopify tags; map Categories ↔ tags from the Google Sheet (from `/exports` xls) into `src/lib/filters.ts` when ready
+- [ ] **Pinterest Step two** — AI / board scan → “Inspired by your board” filter (async)
+
+## Recent
+
+- [x] Pinterest Part one — bride add/edit validated board link; staff expanded row shows View board; `pin.it` resolved when possible
 
 ## Deploy
 

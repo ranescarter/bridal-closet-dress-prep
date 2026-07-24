@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BrandLoadingState } from "@/components/BrandLoadingState";
 import { FavoritesGrid } from "@/components/FavoritesGrid";
+import { PinterestInspiration } from "@/components/PinterestInspiration";
 import { SwipeDeck } from "@/components/SwipeDeck";
 import { formatAppointmentFull } from "@/lib/appointments";
 import { MAX_FAVORITES, sortFavoritesByTitle } from "@/lib/favorites";
@@ -210,16 +211,36 @@ export function SessionPage({ token }: Props) {
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
       <div className="flex flex-col gap-3 border-b border-[var(--blush)] pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-        <div className="space-y-1">
-          <h1 className="font-[family-name:var(--font-display)] text-2xl font-normal text-[var(--ink)] sm:text-3xl">
-            {session.client_name}
-          </h1>
-          <p className="text-sm text-[var(--muted)] sm:text-base">
-            <span className="mr-2 text-xs font-medium uppercase tracking-[0.12em]">
-              Appointment
-            </span>
-            {formatAppointmentFull(session.appointment_at)}
-          </p>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="space-y-1">
+            <h1 className="font-[family-name:var(--font-display)] text-2xl font-normal text-[var(--ink)] sm:text-3xl">
+              {session.client_name}
+            </h1>
+            <p className="text-sm text-[var(--muted)] sm:text-base">
+              <span className="mr-2 text-xs font-medium uppercase tracking-[0.12em]">
+                Appointment
+              </span>
+              {formatAppointmentFull(session.appointment_at)}
+            </p>
+          </div>
+          <PinterestInspiration
+            token={token}
+            pinterestUrl={session.pinterest_url}
+            canEdit={canEdit}
+            onSaved={(url) =>
+              setSession((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      pinterest_url: url,
+                      pinterest_updated_at: url
+                        ? new Date().toISOString()
+                        : null,
+                    }
+                  : prev,
+              )
+            }
+          />
         </div>
 
         {canEdit ? (

@@ -525,6 +525,24 @@ export function StaffDashboard() {
                   {expanded ? (
                     <tr className="border-b border-black/5 bg-[var(--blush-soft)]/60 last:border-b-0">
                       <td colSpan={8} className="px-4 py-3">
+                        <div className="mb-3 text-sm">
+                          <span className="text-[var(--muted)]">Pinterest: </span>
+                          {session.pinterest_url ? (
+                            <a
+                              href={session.pinterest_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-[var(--ink)] underline"
+                            >
+                              View bride&apos;s Pinterest board
+                              {session.pinterest_updated_at
+                                ? ` · updated ${formatLastUpdated(session.pinterest_updated_at)}`
+                                : ""}
+                            </a>
+                          ) : (
+                            <span className="text-[var(--muted)]">Not added</span>
+                          )}
+                        </div>
                         {favorites.length === 0 ? (
                           <p className="text-sm text-[var(--muted)]">
                             No favorites yet.
