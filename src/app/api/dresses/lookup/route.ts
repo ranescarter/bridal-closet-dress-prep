@@ -36,6 +36,6 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
-    return serverError(err);
+    return serverError("Could not look up product");
   }
 }
